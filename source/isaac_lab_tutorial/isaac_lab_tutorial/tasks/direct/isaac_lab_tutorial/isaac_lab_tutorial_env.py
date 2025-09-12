@@ -13,7 +13,9 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from .isaac_lab_tutorial_env_cfg import IsaacLabTutorialEnvCfg
+
+# import IsaacLabTutorialEnvCfg from isaac_lab_tutorial_env_cfg.py
+from .isaac_lab_tutorial_env_cfg import IsaacLabTutorialEnvCfg 
 
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
