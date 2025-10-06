@@ -63,9 +63,9 @@ class IsaacLabTutorialEnv(DirectRLEnv):
 
         self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
         self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
-        self.commands = torch.randn((self.cfg.scene.num_envs, 3)).cuda()
-        self.commands[:,-1] = 0.0
-        self.commands = self.commands/torch.linalg.norm(self.commands, dim=1, keepdim=True)
+        self.commands = torch.randn((self.cfg.scene.num_envs, 3)).cuda() # the commands are sampled from a multivariate normal distribution via torch.randn ...
+        self.commands[:,-1] = 0.0 # ... with the z-component fixed to zero ...
+        self.commands = self.commands/torch.linalg.norm(self.commands, dim=1, keepdim=True) # ... and normalized unit length
         
         # offsets to account for atan range and keep things on [-pi, pi]
         ratio = self.commands[:,1]/(self.commands[:,0]+1E-8)
@@ -84,17 +84,19 @@ class IsaacLabTutorialEnv(DirectRLEnv):
         
 
     def _visualize_markers(self):
+        # get marker locations and orientations
         self.marker_locations = self.robot.data.root_pos_w
         self.forward_marker_orientations = self.robot.data.root_quat_w
         self.command_marker_orientations = math_utils.quat_from_angle_axis(self.yaws, self.up_dir).squeeze()
 
+        # offset markers so they are above the jetbot
         loc = self.marker_locations + self.marker_offset
         loc = torch.vstack((loc, loc))
         rots = torch.vstack((self.forward_marker_orientations, self.command_marker_orientations))
 
+        # render the markers
         all_envs = torch.arange(self.cfg.scene.num_envs)
         indices = torch.hstack((torch.zeros_like(all_envs), torch.ones_like(all_envs)))
-
         self.visualization_markers.visualize(loc, rots, marker_indices=indices)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
@@ -105,7 +107,7 @@ class IsaacLabTutorialEnv(DirectRLEnv):
         self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
 
     def _get_observations(self) -> dict:
-        self.velocity = self.robot.data.root_com_vel_w 
+        self.velocity = self.robot.data.root_com_vel_w # root_com_vel_w is linear velocity in body, not world frame!
         self.forwards = math_utils.quat_apply(self.robot.data.root_link_quat_w, self.robot.data.FORWARD_VEC_B)
         # obs = torch.hstack((self.velocity, self.commands))
 
@@ -120,10 +122,10 @@ class IsaacLabTutorialEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         forward_reward = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1)
         alignment_reward = torch.sum(self.forwards * self.commands, dim=-1, keepdim=True)
-        total_reward = forward_reward + alignment_reward
+        #total_reward = forward_reward + alignment_reward
         # total_reward = forward_reward*alignment_reward
         # total_reward = forward_reward*alignment_reward + forward_reward
-        # total_reward = forward_reward*torch.exp(alignment_reward)
+        total_reward = forward_reward*torch.exp(alignment_reward)
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -136,10 +138,12 @@ class IsaacLabTutorialEnv(DirectRLEnv):
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
 
+        # pick new commands for reset envs
         self.commands[env_ids] = torch.randn((len(env_ids), 3)).cuda()
         self.commands[env_ids,-1] = 0.0
         self.commands[env_ids] = self.commands[env_ids]/torch.linalg.norm(self.commands[env_ids], dim=1, keepdim=True)
         
+        # recalculate the orientations for the command markers with the new commands
         ratio = self.commands[env_ids][:,1]/(self.commands[env_ids][:,0]+1E-8)
         gzero = torch.where(self.commands[env_ids] > 0, True, False)
         lzero = torch.where(self.commands[env_ids]< 0, True, False)
@@ -148,6 +152,7 @@ class IsaacLabTutorialEnv(DirectRLEnv):
         offsets = torch.pi*plus - torch.pi*minus
         self.yaws[env_ids] = torch.atan(ratio).reshape(-1,1) + offsets.reshape(-1,1)
 
+        # set the root state for the reset envs
         default_root_state = self.robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
 

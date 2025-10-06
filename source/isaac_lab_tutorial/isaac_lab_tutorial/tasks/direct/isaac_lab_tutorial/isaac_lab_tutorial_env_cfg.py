@@ -22,7 +22,7 @@ class IsaacLabTutorialEnvCfg(DirectRLEnvCfg): # we use DirectRLEnvCfg  config cl
     # - spaces definition
     action_space = 2
 
-    # observation_space = 9
+    #observation_space = 9
     observation_space = 3
     state_space = 0
 
